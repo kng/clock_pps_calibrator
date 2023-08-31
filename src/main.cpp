@@ -1,38 +1,46 @@
 #include <Arduino.h>
+#define LED 13
+#define DIV 62500
 
-int led = 13;
-int count = 0;
-int time = 0;
+int count, time, time_old, count_old;
+long freq;
+bool trig = true;
 
 void setup() {
-  pinMode(led, OUTPUT);
+  pinMode(LED, OUTPUT);
   Serial.begin(9600);
 
   TCCR1A = 0;
   TCCR1B = (1 << WGM12) | (1 << CS10);       // CTC mode, no prescaler
-  TCNT1  = 0;
-  OCR1A = 62500;                             // 1M / 16 = 62500
-  TIMSK1 |= (1 << OCIE1A) | (1 << ICIE1);    // enable timer compare and capture interrupt
+  OCR1A = DIV;                               // 1M / 16 = 62500
+  TIMSK1 |= (1 << OCIE1A) | (1 << ICIE1);    // enable timer compare and capture interrupt on PB0 (arduino pin 8)
   sei();
 }
 
 void loop() {
-  Serial.println(count);
-  if(digitalRead(led)){
-    digitalWrite(led,LOW);
-  } else {
-    digitalWrite(led, HIGH);
+  if(trig){
+    trig = false;
+    Serial.print(freq);
+    Serial.print(" ");
+    Serial.println(count);
+    if(digitalRead(LED)){
+      digitalWrite(LED,LOW);
+    } else {
+      digitalWrite(LED, HIGH);
+    }
   }
-  delay(1000);
 }
 
-ISR(TIMER1_COMPA_vect){
+ISR(TIMER1_COMPA_vect){   // count 16 per MHz
   count += 1;
 }
 
-ISR(TIMER1_CAPT_vect){
-  unsigned char sreg = SREG;
+ISR(TIMER1_CAPT_vect){    // capture timer at pps signal
   cli();
-  time = TCNT1;               // capture timer at pps signal
-  SREG = sreg;
+  time_old = time;
+  time = ICR1;
+  freq = (count - count_old) * DIV - (time_old - time);
+  count_old = count;
+  trig = true;
+  sei();
 }
